@@ -84,26 +84,88 @@ calls — nothing about your task list leaves the phone.
 
 ---
 
-## Running it
+## Getting it on an Android phone
+
+### The easy way — download the APK
+
+Every push builds a signed APK on GitHub's runners and attaches it to a release.
+Open this link **on your phone**:
+
+**https://github.com/Cbdepo/Proactivityapptest2/releases/download/android/momentum.apk**
+
+Then:
+
+1. Chrome warns about the file type — tap **Download anyway**.
+2. Open it from the notification, or Files → Downloads.
+3. Android asks to allow installs from this source — tap **Settings**, enable it,
+   then come back and tap **Install**.
+4. Momentum is in your app drawer. No laptop, no Expo Go, no account.
+
+The link is stable: it always serves the newest build, and later APKs install
+straight over the one already on the phone.
+
+To rebuild after changing something: Actions tab → **Build Android APK** → **Run
+workflow**. It takes about 15 minutes and refreshes the same link.
+
+> The APK is signed with the standard Android debug key. That is fine for
+> installing on your own devices, and it means every build shares a signature so
+> updates apply cleanly. It is **not** suitable for Play Store distribution — that
+> needs a real upload key you generate and keep private.
+
+### The dev-server way — instant reload while editing
+
+Faster feedback if you are changing the code: the app runs inside Expo Go and
+reloads as you save.
+
+```bash
+git clone https://github.com/Cbdepo/Proactivityapptest2.git
+cd Proactivityapptest2
+git checkout claude/dopamine-proactivity-app-7iuvew
+npm install
+npx expo start
+```
+
+Install [Expo Go](https://play.google.com/store/apps/details?id=host.exp.exponent),
+open it, and scan the QR code from the terminal. Phone and computer need to be on
+the same Wi-Fi — otherwise use `npx expo start --tunnel`. Your computer has to
+stay running for this one.
+
+### Building an APK on your own machine
+
+Needs Android Studio (or the SDK command-line tools) and JDK 17:
 
 ```bash
 npm install
-npm start          # then scan the QR code with Expo Go
+npx expo prebuild --platform android
+cd android && ./gradlew assembleRelease
+# -> android/app/build/outputs/apk/release/app-release.apk
 ```
 
-Or target a platform directly:
+Or build it in Expo's cloud instead, which needs no Android SDK locally:
 
 ```bash
-npm run ios        # iOS simulator (macOS)
-npm run android    # Android emulator or device
-npm run web        # browser, for a quick look
+npm install -g eas-cli
+eas login
+eas build --platform android --profile preview
 ```
 
-Checks:
+The `preview` profile in `eas.json` is already set to emit an APK rather than an
+App Store bundle.
+
+### iOS
+
+`npx expo start` and scan the QR with the Camera app to run it in Expo Go.
+Installing a standalone build on an iPhone requires a $99/yr Apple Developer
+account; there is no sideloading equivalent to an APK.
+
+---
+
+## Checks
 
 ```bash
 npm test           # jest — game maths and state transitions
 npm run typecheck  # tsc --noEmit
+npm run web        # run it in a browser for a quick look
 ```
 
 ---

@@ -1,0 +1,102 @@
+name: Build Android APK
+
+# Builds a sideloadable APK on GitHub's runners and attaches it to the `android`
+# release, so the phone can download it directly without a development machine
+# in the loop.
+#
+# Run it from the Actions tab (Build Android APK -> Run workflow), or let it fire
+# on a push that changes the app.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - claude/dopamine-proactivity-app-7iuvew
+    paths-ignore:
+      - '**/*.md'
+      - '.gitignore'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-apk
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check types and run tests
+        run: |
+          npm run typecheck
+          npm test
+
+      # Each build gets a higher versionCode so a new APK installs cleanly over
+      # the one already on the phone instead of being refused as a downgrade.
+      - name: Stamp the build number
+        run: |
+          node -e "
+            const fs = require('fs');
+            const config = JSON.parse(fs.readFileSync('app.json', 'utf8'));
+            config.expo.android.versionCode = Number(process.env.GITHUB_RUN_NUMBER);
+            fs.writeFileSync('app.json', JSON.stringify(config, null, 2) + '\n');
+          "
+
+      - name: Generate the native Android project
+        run: npx expo prebuild --platform android --no-install
+
+      # Building every ABI means compiling the native code four times. Phones
+      # shipped since ~2017 are arm64; armeabi-v7a covers anything older.
+      - name: Limit to the ABIs real phones use
+        run: |
+          sed -i 's/^reactNativeArchitectures=.*/reactNativeArchitectures=arm64-v8a,armeabi-v7a/' android/gradle.properties
+          grep reactNativeArchitectures android/gradle.properties
+
+      - name: Build release APK
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Rename the APK
+        run: |
+          mv android/app/build/outputs/apk/release/app-release.apk momentum.apk
+          ls -lh momentum.apk
+
+      # Kept for 90 days, and downloadable from the run page if the release step
+      # is ever unavailable.
+      - name: Upload as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: momentum-apk
+          path: momentum.apk
+          if-no-files-found: error
+
+      # The stable download link. Overwrites the asset on the `android` release
+      # each run, so the URL never changes.
+      - name: Publish to the android release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view android >/dev/null 2>&1 || gh release create android \
+            --title "Momentum for Android" \
+            --notes "Latest sideloadable APK. Signed with the standard Android debug key — fine for personal installs, not for Play Store distribution."
+          gh release upload android momentum.apk --clobber
+          echo "APK: ${{ github.server_url }}/${{ github.repository }}/releases/download/android/momentum.apk" >> "$GITHUB_STEP_SUMMARY"
